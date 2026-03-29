@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clip Tool</title>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      background: #1e293b;
+      padding: 25px;
+      border-radius: 15px;
+      width: 520px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+      border: none;
+    }
+
+    input {
+      background: #334155;
+      color: white;
+    }
+
+    button {
+      background: #22c55e;
+      color: white;
+      cursor: pointer;
+    }
+
+    #player {
+      margin-top: 10px;
+    }
+
+    .progress-bar {
+      height: 10px;
+      background: #334155;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+
+    #progress {
+      height: 100%;
+      width: 0%;
+      background: #22c55e;
+    }
+  </style>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h2>🎬 Clip Tool</h2>
+
+  <input id="url" placeholder="Paste YouTube URL">
+  <button onclick="loadVideo()">Load Video</button>
+
+  <div id="player"></div>
+
+  <label>Start</label>
+  <input type="range" id="startRange" min="0" max="300" value="0">
+
+  <label>End</label>
+  <input type="range" id="endRange" min="0" max="300" value="10">
+
+  <input id="start" placeholder="Start time">
+  <input id="end" placeholder="End time">
+
+  <button onclick="startClip()">Download Clip</button>
+
+  <div class="progress-bar">
+    <div id="progress"></div>
+  </div>
+
+  <p id="statusText"></p>
+
+</div>
+
+<script>
+
+let player;
+
+// 🔹 Load YouTube API player
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('player', {
+    height: '250',
+    width: '100%',
+    videoId: ''
+  });
+}
+
+// 🔹 Extract video ID
+function extractVideoId(url) {
+  const match = url.match(/(?:v=|youtu\.be\/)([^&]+)/);
+  return match ? match[1] : "";
+}
+
+// 🔹 Format time
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `00:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+}
+
+// 🔹 Load video
+function loadVideo() {
+  const url = document.getElementById("url").value;
+  const id = extractVideoId(url);
+
+  player.loadVideoById(id);
+
+  setTimeout(() => {
+    const duration = player.getDuration();
+
+    document.getElementById("startRange").max = duration;
+    document.getElementById("endRange").max = duration;
+  }, 2000);
+}
+
+// 🔹 Start slider
+document.getElementById("startRange").oninput = function () {
+  player.seekTo(this.value);
+  document.getElementById("start").value = formatTime(this.value);
+};
+
+// 🔹 End slider
+document.getElementById("endRange").oninput = function () {
+  const start = document.getElementById("startRange").value;
+
+  if (this.value <= start) {
+    this.value = parseInt(start) + 1;
+  }
+
+  document.getElementById("end").value = formatTime(this.value);
+};
+
+// 🔹 Start clip download
+async function startClip() {
+  const url = document.getElementById("url").value;
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+
+  const res = await fetch(
+    `http://localhost:8000/start?url=${encodeURIComponent(url)}&start=${start}&end=${end}`
+  );
+
+  const data = await res.json();
+  const jobId = data.job_id;
+
+  const interval = setInterval(async () => {
+    const status = await fetch(`http://localhost:8000/status?job_id=${jobId}`);
+    const s = await status.json();
+
+    document.getElementById("progress").style.width = (s.progress || 0) + "%";
+    document.getElementById("statusText").innerText =
+      `Status: ${s.status} | ${s.speed || ""} | ${s.eta || ""}`;
+
+    if (s.status === "done") {
+      clearInterval(interval);
+      window.open(`http://localhost:8000/download?job_id=${jobId}`);
+    }
+  }, 1000);
+}
+
+</script>
+
+</body>
+</html>
